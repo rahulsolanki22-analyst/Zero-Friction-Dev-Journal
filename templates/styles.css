@@ -1,0 +1,59 @@
+/* Custom Scrollbar Configuration */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: #f9fafb; /* gray-50 */
+}
+
+::-webkit-scrollbar-thumb {
+    background: #d1d5db; /* gray-300 */
+    border-radius: 4px;
+    transition: background-color 0.3s ease;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #9ca3af; /* gray-400 */
+}
+
+html.dark ::-webkit-scrollbar-track {
+    background: #09090b; /* zinc-950 */
+}
+
+html.dark ::-webkit-scrollbar-thumb {
+    background: #27272a; /* zinc-800 */
+}
+
+html.dark ::-webkit-scrollbar-thumb:hover {
+    background: #0e7490; /* cyan-700 */
+}
+
+/* Global focus and selection styles */
+::selection {
+    background: #cffafe; /* cyan-100 */
+    color: #0e7490; /* cyan-700 */
+}
+
+html.dark ::selection {
+    background: #083344;
+    color: #22d3ee;
+}
+
+/* Engineering Blueprint Grid Background */
+body {
+    background-color: #f9fafb;
+    background-image: 
+        linear-gradient(rgba(0, 0, 0, 0.05) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0, 0, 0, 0.05) 1px, transparent 1px);
+    background-size: 30px 30px;
+    background-attachment: fixed;
+}
+
+html.dark body {
+    background-color: #09090b;
+    background-image: 
+        linear-gradient(rgba(39, 39, 42, 0.2) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(39, 39, 42, 0.2) 1px, transparent 1px);
+}

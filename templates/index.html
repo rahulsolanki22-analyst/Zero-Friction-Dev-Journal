@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ZERO-FRICTION DEV JOURNAL //</title>
+    
+    <!-- Inline script to apply dark mode immediately before render -->
+    <script>
+        if (localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+            document.documentElement.classList.add('dark')
+        } else {
+            document.documentElement.classList.remove('dark')
+        }
+    </script>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        zinc: {
+                            800: '#27272a',
+                            900: '#18181b',
+                            950: '#09090b',
+                        },
+                        cyan: {
+                            400: '#22d3ee',
+                            700: '#0e7490',
+                            950: '#083344',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <link rel="stylesheet" href="/static/styles.css">
+    <script>
+        function toggleTheme() {
+            if (document.documentElement.classList.contains('dark')) {
+                document.documentElement.classList.remove('dark');
+                localStorage.theme = 'light';
+            } else {
+                document.documentElement.classList.add('dark');
+                localStorage.theme = 'dark';
+            }
+        }
+
+        async function deleteLog(id) {
+            if(confirm("Delete this log?")) {
+                const response = await fetch(`/api/log/${id}`, { method: 'DELETE' });
+                if (response.ok) {
+                    window.location.reload();
+                }
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', async () => {
+            const searchInput = document.getElementById('searchInput');
+            const logEntries = document.querySelectorAll('.log-entry');
+            const escHint = document.getElementById('escHint');
+            const tagsContainer = document.getElementById('tagsContainer');
+
+            // Fetch and render tags for sidebar
+            try {
+                const res = await fetch('/api/tags');
+                const tags = await res.json();
+                
+                if (tags.length === 0) {
+                    tagsContainer.innerHTML = '<p class="text-gray-500 dark:text-zinc-600 text-sm">No tags yet.</p>';
+                } else {
+                    tagsContainer.innerHTML = tags.map(t => {
+                        let colorClass = 'bg-cyan-50 dark:bg-cyan-950/40 text-cyan-700 dark:text-cyan-400 border-cyan-200 dark:border-cyan-900/50 hover:bg-cyan-100 dark:hover:bg-cyan-900/60';
+                        const tName = t.tag.replace('#', '').toLowerCase();
+                        if (tName === 'bug' || tName === 'error') {
+                            colorClass = 'bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-400 border-red-200 dark:border-red-900/60 hover:bg-red-100 dark:hover:bg-red-900/60';
+                        } else if (tName === 'learning' || tName === 'feature') {
+                            colorClass = 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-900/60 hover:bg-emerald-100 dark:hover:bg-emerald-900/60';
+                        }
+                        
+                        return `<button onclick="window.filterByTag('${t.tag}')" class="w-full text-left px-3 py-2 rounded border transition-colors flex justify-between items-center mb-2 ${colorClass} focus:outline-none">
+                            <span class="font-medium">${t.tag}</span>
+                            <span class="text-xs opacity-75">${t.count}</span>
+                        </button>`;
+                    }).join('');
+                }
+            } catch (e) {
+                console.error("Failed to load tags", e);
+            }
+
+            // Keyboard navigation
+            if (searchInput) {
+                document.addEventListener('keydown', (e) => {
+                    if (e.key === '/' && document.activeElement !== searchInput) {
+                        e.preventDefault();
+                        searchInput.focus();
+                    } else if (e.key === 'Escape') {
+                        searchInput.value = '';
+                        if (document.activeElement) {
+                            document.activeElement.blur();
+                        }
+                        filterLogs('');
+                    }
+                });
+
+                searchInput.addEventListener('input', (e) => {
+                    filterLogs(e.target.value);
+                });
+            }
+
+            window.filterByTag = function(tag) {
+                if (searchInput) {
+                    searchInput.value = tag;
+                    filterLogs(tag);
+                }
+            };
+
+            function filterLogs(query) {
+                const lowerQuery = query.toLowerCase();
+                if (escHint) {
+                    if (lowerQuery.length > 0) {
+                        escHint.classList.remove('hidden');
+                    } else {
+                        escHint.classList.add('hidden');
+                    }
+                }
+                
+                logEntries.forEach(entry => {
+                    const content = (entry.getAttribute('data-content') || '').toLowerCase();
+                    const tags = (entry.getAttribute('data-tags') || '').toLowerCase();
+                    if (content.includes(lowerQuery) || tags.includes(lowerQuery)) {
+                        entry.style.display = 'block';
+                    } else {
+                        entry.style.display = 'none';
+                    }
+                });
+            }
+        });
+    </script>
+</head>
+<body class="bg-gray-50 dark:bg-zinc-950 text-gray-800 dark:text-gray-300 font-mono antialiased min-h-screen py-10 transition-colors duration-200">
+
+    <div class="max-w-7xl mx-auto px-4 lg:px-8 grid grid-cols-1 lg:grid-cols-4 gap-8">
+        
+        <!-- Left Sidebar: Cloud Tags -->
+        <aside class="lg:col-span-1 space-y-6">
+            <!-- Header -->
+            <header class="mb-8 flex justify-between items-center">
+                <h1 class="text-2xl font-bold tracking-widest text-gray-900 dark:text-zinc-100 flex items-center gap-3">
+                    ZERO-FRICTION DEV JOURNAL //
+                </h1>
+                
+                <!-- Theme Toggle Button -->
+                <button onclick="toggleTheme()" class="p-2 rounded bg-gray-200 dark:bg-zinc-800 text-gray-600 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-zinc-700 transition-colors focus:outline-none" title="Toggle Theme">
+                    <svg class="w-5 h-5 hidden dark:block" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
+                    <svg class="w-5 h-5 block dark:hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+                </button>
+            </header>
+            
+            <div class="bg-white dark:bg-zinc-900/60 border border-gray-200 dark:border-zinc-800 rounded-lg p-5 shadow-lg sticky top-8 transition-colors duration-200">
+                <h2 class="text-sm text-gray-500 dark:text-zinc-500 uppercase tracking-wider mb-4 border-b border-gray-200 dark:border-zinc-800 pb-2">Cloud Tags</h2>
+                <div id="tagsContainer" class="max-h-[60vh] overflow-y-auto pr-1">
+                    <!-- Tags populated by JS -->
+                    <p class="text-gray-500 dark:text-zinc-500 text-sm animate-pulse">Loading...</p>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Feed -->
+        <main class="lg:col-span-3">
+            <!-- Stats Banner -->
+            <div class="bg-white dark:bg-zinc-900/60 border border-gray-200 dark:border-zinc-800 rounded-lg p-5 mb-6 flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center shadow-lg transition-colors duration-200">
+                <div>
+                    <p class="text-sm text-gray-500 dark:text-zinc-500 uppercase tracking-wider mb-1">Total Entries</p>
+                    <p class="text-3xl font-bold text-cyan-600 dark:text-cyan-400">{{ total_entries }}</p>
+                </div>
+                <div class="bg-gray-100 dark:bg-zinc-950 p-3 rounded-md border border-gray-200 dark:border-zinc-800 flex-1 w-full overflow-x-auto shadow-inner transition-colors duration-200">
+                    <p class="text-xs text-gray-500 dark:text-zinc-500 mb-1">Quick Add (CLI)</p>
+                    <code class="text-sm text-cyan-700 dark:text-cyan-400 whitespace-nowrap">curl -X POST -H "Content-Type: application/json" -d '{"content":"log message #tag"}' "http://localhost:8000/api/log?cli=true"</code>
+                </div>
+            </div>
+
+            <!-- Search Bar -->
+            <div class="mb-8 relative">
+                <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <svg class="h-5 w-5 text-gray-400 dark:text-zinc-500" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clip-rule="evenodd" />
+                    </svg>
+                </div>
+                <input type="text" id="searchInput" placeholder="Search logs or tags... (Press '/' to focus)" 
+                       class="w-full bg-white dark:bg-zinc-900/60 border border-gray-300 dark:border-zinc-800 text-gray-900 dark:text-zinc-300 rounded-lg pl-10 pr-4 py-3 focus:outline-none focus:border-cyan-500 dark:focus:border-cyan-700 focus:ring-1 focus:ring-cyan-500 dark:focus:ring-cyan-700 transition-colors shadow-inner placeholder-gray-400 dark:placeholder-zinc-600">
+                <div class="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none hidden" id="escHint">
+                    <span class="text-xs font-semibold text-gray-500 dark:text-zinc-400 bg-gray-100 dark:bg-zinc-800 px-2 py-1 rounded">Esc</span>
+                </div>
+            </div>
+
+            <!-- Timeline Feed -->
+            <div class="space-y-6">
+                {% if logs %}
+                    {% for log in logs %}
+                    <div class="log-entry group bg-white dark:bg-zinc-900/60 border border-gray-200 dark:border-zinc-800 rounded-lg p-5 relative hover:border-cyan-300 dark:hover:border-cyan-900/50 transition-colors shadow-md hover:shadow-cyan-100 dark:hover:shadow-cyan-900/10"
+                         data-content="{{ log.content }}" data-tags="{{ log.tags }}">
+                        <div class="flex justify-between items-start mb-3">
+                            <span class="text-xs text-gray-400 dark:text-zinc-500 tracking-wider">{{ log.timestamp }}</span>
+                            <button onclick="deleteLog({{ log.id }})" class="text-gray-400 dark:text-zinc-600 hover:text-red-500 dark:hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity focus:outline-none" title="Delete">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                </svg>
+                            </button>
+                        </div>
+                        
+                        {% if '\n' in log.content %}
+                            <pre class="bg-gray-100 dark:bg-zinc-950 border border-gray-200 dark:border-zinc-800 rounded p-4 mb-4 overflow-x-auto text-gray-800 dark:text-zinc-300 text-sm leading-relaxed whitespace-pre font-mono shadow-inner transition-colors duration-200"><code>{{ log.content }}</code></pre>
+                        {% else %}
+                            <p class="text-gray-800 dark:text-zinc-300 mb-4 whitespace-pre-wrap leading-relaxed transition-colors duration-200">{{ log.content }}</p>
+                        {% endif %}
+                        
+                        {% if log.tags %}
+                        <div class="flex flex-wrap gap-2 mt-2">
+                            {% for tag in log.tags.split(',') %}
+                                {% if tag %}
+                                    {% set tagLower = tag.replace('#', '').lower() %}
+                                    {% if tagLower in ['bug', 'error'] %}
+                                        <span class="px-2 py-1 text-xs rounded bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-400 border border-red-200 dark:border-red-900/60 shadow-sm transition-colors duration-200">{{ tag }}</span>
+                                    {% elif tagLower in ['learning', 'feature'] %}
+                                        <span class="px-2 py-1 text-xs rounded bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-900/60 shadow-sm transition-colors duration-200">{{ tag }}</span>
+                                    {% else %}
+                                        <span class="px-2 py-1 text-xs rounded bg-cyan-50 dark:bg-cyan-950/40 text-cyan-700 dark:text-cyan-400 border border-cyan-200 dark:border-cyan-900/50 shadow-sm transition-colors duration-200">{{ tag }}</span>
+                                    {% endif %}
+                                {% endif %}
+                            {% endfor %}
+                        </div>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <div class="text-center py-16 bg-gray-50 dark:bg-zinc-900/60 border border-gray-300 dark:border-zinc-800 border-dashed rounded-lg shadow-inner transition-colors duration-200">
+                        <div class="w-16 h-16 mx-auto mb-4 rounded-full bg-gray-100 dark:bg-zinc-950 flex items-center justify-center border border-gray-200 dark:border-zinc-800 shadow-sm transition-colors duration-200">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-gray-400 dark:text-zinc-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                            </svg>
+                        </div>
+                        <h3 class="text-gray-600 dark:text-zinc-400 font-medium mb-1">No log entries yet</h3>
+                        <p class="text-gray-500 dark:text-zinc-600 text-sm max-w-sm mx-auto">Send a POST request to your API to create your first journal entry.</p>
+                    </div>
+                {% endif %}
+            </div>
+        </main>
+    </div>
+</body>
+</html>
