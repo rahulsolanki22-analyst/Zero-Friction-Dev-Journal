@@ -9,6 +9,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+import libsql_client
 
 app = FastAPI(title="Zero-Friction Dev Journal")
 
@@ -20,16 +21,60 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Ensure the database is created
-DB_FILE = os.environ.get("DATABASE_PATH", "database.db")
+# Database configuration: supports both local SQLite and remote Turso (libsql)
+DATABASE_URL = os.environ.get("DATABASE_URL", os.environ.get("DATABASE_PATH", "database.db"))
+AUTH_TOKEN = os.environ.get("DATABASE_AUTH_TOKEN", "")
+
+# Determine if we should use Turso (libsql) or local sqlite3
+USE_TURSO = any(DATABASE_URL.startswith(prefix) for prefix in ["libsql://", "http://", "https://", "wss://"])
+
+class TursoRowAdapter:
+    def __init__(self, row, columns):
+        self._row = row
+        self._columns = columns
+        self._dict = dict(zip(columns, row))
+
+    def __getitem__(self, key):
+        if isinstance(key, int):
+            return self._row[key]
+        return self._dict[key]
+
+    def __getattr__(self, name):
+        if name in self._dict:
+            return self._dict[name]
+        raise AttributeError(f"'TursoRowAdapter' object has no attribute '{name}'")
+
+    def keys(self):
+        return self._columns
+
+    def __iter__(self):
+        return iter(self._dict.items())
+
+def execute_query(query: str, params: tuple = ()):
+    if USE_TURSO:
+        with libsql_client.create_client_sync(DATABASE_URL, auth_token=AUTH_TOKEN) as client:
+            res = client.execute(query, params)
+            columns = res.columns
+            return [TursoRowAdapter(row, columns) for row in res.rows]
+    else:
+        conn = sqlite3.connect(DATABASE_URL)
+        conn.row_factory = sqlite3.Row
+        try:
+            cursor = conn.cursor()
+            cursor.execute(query, params)
+            rows = cursor.fetchall()
+            conn.commit()
+            return rows
+        finally:
+            conn.close()
 
 def init_db():
-    db_dir = os.path.dirname(DB_FILE)
-    if db_dir and not os.path.exists(db_dir):
-        os.makedirs(db_dir, exist_ok=True)
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    cursor.execute("""
+    if not USE_TURSO:
+        db_dir = os.path.dirname(DATABASE_URL)
+        if db_dir and not os.path.exists(db_dir):
+            os.makedirs(db_dir, exist_ok=True)
+            
+    execute_query("""
         CREATE TABLE IF NOT EXISTS logs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             content TEXT NOT NULL,
@@ -37,8 +82,6 @@ def init_db():
             timestamp TEXT
         )
     """)
-    conn.commit()
-    conn.close()
 
 init_db()
 
@@ -51,18 +94,9 @@ app.mount("/static", StaticFiles(directory="templates"), name="static")
 class LogEntry(BaseModel):
     content: str
 
-def get_db_connection():
-    conn = sqlite3.connect(DB_FILE)
-    conn.row_factory = sqlite3.Row
-    return conn
-
 @app.get("/", response_class=HTMLResponse)
 async def read_root(request: Request):
-    conn = get_db_connection()
-    logs = conn.execute("SELECT * FROM logs ORDER BY timestamp DESC").fetchall()
-    conn.close()
-    
-    # Calculate some stats for the header
+    logs = execute_query("SELECT * FROM logs ORDER BY timestamp DESC")
     total_entries = len(logs)
     
     return templates.TemplateResponse(
@@ -82,14 +116,10 @@ async def create_log(entry: LogEntry, cli: bool = False):
     tags_str = ",".join(tags)
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute(
+    execute_query(
         "INSERT INTO logs (content, tags, timestamp) VALUES (?, ?, ?)",
         (content, tags_str, timestamp)
     )
-    conn.commit()
-    conn.close()
     
     # Format response message
     tag_list = [t.replace("#", "") for t in tags]
@@ -105,18 +135,12 @@ async def create_log(entry: LogEntry, cli: bool = False):
 
 @app.delete("/api/log/{log_id}")
 async def delete_log(log_id: int):
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("DELETE FROM logs WHERE id = ?", (log_id,))
-    conn.commit()
-    conn.close()
+    execute_query("DELETE FROM logs WHERE id = ?", (log_id,))
     return {"status": "success", "message": "Log deleted"}
 
 @app.get("/api/tags")
 async def get_tags():
-    conn = get_db_connection()
-    logs = conn.execute("SELECT tags FROM logs").fetchall()
-    conn.close()
+    logs = execute_query("SELECT tags FROM logs")
     
     tag_counts = {}
     for log in logs:
@@ -130,12 +154,10 @@ async def get_tags():
 
 @app.get("/api/search")
 async def search_logs(q: str):
-    conn = get_db_connection()
     query = f"%{q}%"
-    logs = conn.execute(
+    logs = execute_query(
         "SELECT * FROM logs WHERE content LIKE ? OR tags LIKE ? ORDER BY timestamp DESC",
         (query, query)
-    ).fetchall()
-    conn.close()
+    )
     
     return [dict(log) for log in logs]
