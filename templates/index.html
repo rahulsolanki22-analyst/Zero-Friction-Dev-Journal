@@ -36,7 +36,12 @@
             }
         }
     </script>
-    <link rel="stylesheet" href="/static/styles.css">
+    <link id="mainStylesheet" rel="stylesheet" href="/static/styles.css">
+    <script>
+        if (window.location.port !== '8000') {
+            document.getElementById('mainStylesheet').setAttribute('href', 'styles.css');
+        }
+    </script>
     <script>
         function toggleTheme() {
             if (document.documentElement.classList.contains('dark')) {
@@ -50,45 +55,133 @@
 
         async function deleteLog(id) {
             if(confirm("Delete this log?")) {
-                const response = await fetch(`/api/log/${id}`, { method: 'DELETE' });
+                const isLiveServer = window.location.port !== '8000';
+                const API_BASE = isLiveServer ? 'http://localhost:8000' : '';
+                const response = await fetch(`${API_BASE}/api/log/${id}`, { method: 'DELETE' });
                 if (response.ok) {
                     window.location.reload();
                 }
             }
         }
 
+        function decodeHtml(html) {
+            const txt = document.createElement("textarea");
+            txt.innerHTML = html;
+            return txt.value;
+        }
+
         document.addEventListener('DOMContentLoaded', async () => {
             const searchInput = document.getElementById('searchInput');
-            const logEntries = document.querySelectorAll('.log-entry');
             const escHint = document.getElementById('escHint');
             const tagsContainer = document.getElementById('tagsContainer');
+            const timelineContainer = document.getElementById('timelineContainer');
+
+            const isLiveServer = window.location.port !== '8000';
+            const API_BASE = isLiveServer ? 'http://localhost:8000' : '';
 
             // Fetch and render tags for sidebar
-            try {
-                const res = await fetch('/api/tags');
-                const tags = await res.json();
-                
-                if (tags.length === 0) {
-                    tagsContainer.innerHTML = '<p class="text-gray-500 dark:text-zinc-600 text-sm">No tags yet.</p>';
-                } else {
-                    tagsContainer.innerHTML = tags.map(t => {
-                        let colorClass = 'bg-cyan-50 dark:bg-cyan-950/40 text-cyan-700 dark:text-cyan-400 border-cyan-200 dark:border-cyan-900/50 hover:bg-cyan-100 dark:hover:bg-cyan-900/60';
-                        const tName = t.tag.replace('#', '').toLowerCase();
-                        if (tName === 'bug' || tName === 'error') {
-                            colorClass = 'bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-400 border-red-200 dark:border-red-900/60 hover:bg-red-100 dark:hover:bg-red-900/60';
-                        } else if (tName === 'learning' || tName === 'feature') {
-                            colorClass = 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-900/60 hover:bg-emerald-100 dark:hover:bg-emerald-900/60';
-                        }
-                        
-                        return `<button onclick="window.filterByTag('${t.tag}')" class="w-full text-left px-3 py-2 rounded border transition-colors flex justify-between items-center mb-2 ${colorClass} focus:outline-none">
-                            <span class="font-medium">${t.tag}</span>
-                            <span class="text-xs opacity-75">${t.count}</span>
-                        </button>`;
-                    }).join('');
+            async function loadTags() {
+                try {
+                    const res = await fetch(`${API_BASE}/api/tags`);
+                    const tags = await res.json();
+                    
+                    if (tags.length === 0) {
+                        tagsContainer.innerHTML = '<p class="text-gray-500 dark:text-zinc-600 text-sm">No tags yet.</p>';
+                    } else {
+                        tagsContainer.innerHTML = tags.map(t => {
+                            let colorClass = 'bg-cyan-50 dark:bg-cyan-950/40 text-cyan-700 dark:text-cyan-400 border-cyan-200 dark:border-cyan-900/50 hover:bg-cyan-100 dark:hover:bg-cyan-900/60';
+                            const tName = t.tag.replace('#', '').toLowerCase();
+                            if (tName === 'bug' || tName === 'error') {
+                                colorClass = 'bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-400 border-red-200 dark:border-red-900/60 hover:bg-red-100 dark:hover:bg-red-900/60';
+                            } else if (tName === 'learning' || tName === 'feature') {
+                                colorClass = 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-900/60 hover:bg-emerald-100 dark:hover:bg-emerald-900/60';
+                            }
+                            
+                            return `<button onclick="window.filterByTag('${t.tag}')" class="w-full text-left px-3 py-2 rounded border transition-colors flex justify-between items-center mb-2 ${colorClass} focus:outline-none">
+                                <span class="font-medium">${t.tag}</span>
+                                <span class="text-xs opacity-75">${t.count}</span>
+                            </button>`;
+                        }).join('');
+                    }
+                } catch (e) {
+                    console.error("Failed to load tags", e);
                 }
-            } catch (e) {
-                console.error("Failed to load tags", e);
             }
+
+            // Fetch and render logs dynamically (Live Server mode)
+            async function loadLogsClientSide() {
+                if (!isLiveServer) return;
+                try {
+                    const res = await fetch(`${API_BASE}/api/search?q=`);
+                    const logs = await res.json();
+                    
+                    // Update stats
+                    const totalEntriesEl = document.querySelector('.text-3xl.font-bold.text-cyan-600, .text-3xl.font-bold.text-cyan-400');
+                    if (totalEntriesEl) totalEntriesEl.textContent = logs.length;
+                    
+                    if (logs.length === 0) {
+                        timelineContainer.innerHTML = `
+                            <div class="text-center py-16 bg-gray-50 dark:bg-zinc-900/60 border border-gray-300 dark:border-zinc-800 border-dashed rounded-lg shadow-inner transition-colors duration-200">
+                                <div class="w-16 h-16 mx-auto mb-4 rounded-full bg-gray-100 dark:bg-zinc-950 flex items-center justify-center border border-gray-200 dark:border-zinc-800 shadow-sm transition-colors duration-200">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-gray-400 dark:text-zinc-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                                    </svg>
+                                </div>
+                                <h3 class="text-gray-600 dark:text-zinc-400 font-medium mb-1">No log entries yet</h3>
+                                <p class="text-gray-500 dark:text-zinc-600 text-sm max-w-sm mx-auto">Send a POST request to your API to create your first journal entry.</p>
+                            </div>`;
+                        return;
+                    }
+
+                    timelineContainer.innerHTML = logs.map(log => {
+                        const tagList = log.tags ? log.tags.split(',') : [];
+                        const tagsHTML = tagList.map(tag => {
+                            if (!tag) return '';
+                            const tagLower = tag.replace('#', '').toLowerCase();
+                            if (tagLower === 'bug' || tagLower === 'error') {
+                                return `<span class="px-2 py-1 text-xs rounded bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-400 border border-red-200 dark:border-red-900/60 shadow-sm transition-colors duration-200">${tag}</span>`;
+                            } else if (tagLower === 'learning' || tagLower === 'feature') {
+                                return `<span class="px-2 py-1 text-xs rounded bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-900/60 shadow-sm transition-colors duration-200">${tag}</span>`;
+                            } else {
+                                return `<span class="px-2 py-1 text-xs rounded bg-cyan-50 dark:bg-cyan-950/40 text-cyan-700 dark:text-cyan-400 border border-cyan-200 dark:border-cyan-900/50 shadow-sm transition-colors duration-200">${tag}</span>`;
+                            }
+                        }).join(' ');
+
+                        // Escape HTML to prevent injection and break rendering
+                        const contentEscaped = log.content
+                            .replace(/&/g, "&amp;")
+                            .replace(/</g, "&lt;")
+                            .replace(/>/g, "&gt;")
+                            .replace(/"/g, "&quot;")
+                            .replace(/'/g, "&#039;");
+                        
+                        const displayHTML = log.content.includes('\n')
+                            ? `<pre class="bg-gray-100 dark:bg-zinc-950 border border-gray-200 dark:border-zinc-800 rounded p-4 mb-4 overflow-x-auto text-gray-800 dark:text-zinc-300 text-sm leading-relaxed whitespace-pre font-mono shadow-inner transition-colors duration-200"><code>${contentEscaped}</code></pre>`
+                            : `<p class="text-gray-800 dark:text-zinc-300 mb-4 whitespace-pre-wrap leading-relaxed transition-colors duration-200">${contentEscaped}</p>`;
+
+                        return `
+                        <div class="log-entry group bg-white dark:bg-zinc-900/60 border border-gray-200 dark:border-zinc-800 rounded-lg p-5 relative hover:border-cyan-300 dark:hover:border-cyan-900/50 transition-colors shadow-md hover:shadow-cyan-100 dark:hover:shadow-cyan-900/10"
+                             data-content="${contentEscaped}" data-tags="${log.tags || ''}">
+                            <div class="flex justify-between items-start mb-3">
+                                <span class="text-xs text-gray-400 dark:text-zinc-500 tracking-wider">${log.timestamp}</span>
+                                <button onclick="deleteLog(${log.id})" class="text-gray-400 dark:text-zinc-600 hover:text-red-500 dark:hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity focus:outline-none" title="Delete">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                    </svg>
+                                </button>
+                            </div>
+                            ${displayHTML}
+                            ${log.tags ? `<div class="flex flex-wrap gap-2 mt-2">${tagsHTML}</div>` : ''}
+                        </div>`;
+                    }).join('');
+                } catch (e) {
+                    console.error("Failed to load logs client-side", e);
+                }
+            }
+
+            // Initialize page loading
+            await loadTags();
+            await loadLogsClientSide();
 
             // Keyboard navigation
             if (searchInput) {
@@ -127,8 +220,10 @@
                     }
                 }
                 
+                const logEntries = document.querySelectorAll('.log-entry');
                 logEntries.forEach(entry => {
-                    const content = (entry.getAttribute('data-content') || '').toLowerCase();
+                    const rawContent = entry.getAttribute('data-content') || '';
+                    const content = decodeHtml(rawContent).toLowerCase();
                     const tags = (entry.getAttribute('data-tags') || '').toLowerCase();
                     if (content.includes(lowerQuery) || tags.includes(lowerQuery)) {
                         entry.style.display = 'block';
@@ -197,7 +292,7 @@
             </div>
 
             <!-- Timeline Feed -->
-            <div class="space-y-6">
+            <div id="timelineContainer" class="space-y-6">
                 {% if logs %}
                     {% for log in logs %}
                     <div class="log-entry group bg-white dark:bg-zinc-900/60 border border-gray-200 dark:border-zinc-800 rounded-lg p-5 relative hover:border-cyan-300 dark:hover:border-cyan-900/50 transition-colors shadow-md hover:shadow-cyan-100 dark:hover:shadow-cyan-900/10"

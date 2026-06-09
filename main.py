@@ -7,9 +7,18 @@ from fastapi import FastAPI, Request, Form, HTTPException
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 app = FastAPI(title="Zero-Friction Dev Journal")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Ensure the database is created
 DB_FILE = "database.db"
@@ -53,11 +62,14 @@ async def read_root(request: Request):
     # Calculate some stats for the header
     total_entries = len(logs)
     
-    return templates.TemplateResponse("index.html", {
-        "request": request, 
-        "logs": logs,
-        "total_entries": total_entries
-    })
+    return templates.TemplateResponse(
+        request=request,
+        name="index.html",
+        context={
+            "logs": logs,
+            "total_entries": total_entries
+        }
+    )
 
 @app.post("/api/log")
 async def create_log(entry: LogEntry, cli: bool = False):
