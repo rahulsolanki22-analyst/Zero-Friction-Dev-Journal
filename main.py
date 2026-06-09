@@ -21,9 +21,12 @@ app.add_middleware(
 )
 
 # Ensure the database is created
-DB_FILE = "database.db"
+DB_FILE = os.environ.get("DATABASE_PATH", "database.db")
 
 def init_db():
+    db_dir = os.path.dirname(DB_FILE)
+    if db_dir and not os.path.exists(db_dir):
+        os.makedirs(db_dir, exist_ok=True)
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
     cursor.execute("""
